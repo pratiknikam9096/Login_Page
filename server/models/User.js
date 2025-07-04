@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema({
   },
   authMethod: {
     type: String,
-    enum: ['password', 'google', 'github', 'biometric', 'otp', 'magic', 'sso', 'moonlight'],
+    enum: ['password', 'google', 'github', 'biometric', 'otp', 'magic', 'sso'],
     required: true
   },
   company: {
@@ -58,7 +58,6 @@ const userSchema = new mongoose.Schema({
   // Social auth specific fields
   googleId: String,
   githubId: String,
-  moonlightId: String,
   // Biometric data (hashed)
   biometricHash: String,
   // OTP related

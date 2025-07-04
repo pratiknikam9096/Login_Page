@@ -16,14 +16,15 @@ import {
   Link,
   Users,
   Github,
-  Moon,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { authAPI } from './services/api';
 
 type AuthMode = 'login' | 'signup';
-type AuthMethod = 'password' | 'google' | 'github' | 'moonlight' | 'biometric' | 'otp' | 'magic' | 'sso';
+type AuthMethod = 'password' | 'google' | 'github' | 'biometric' | 'otp' | 'magic' | 'sso';
 
 interface FormData {
   email: string;
@@ -52,6 +53,7 @@ function App() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [biometricStatus, setBiometricStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [brightness, setBrightness] = useState(100);
   const [formData, setFormData] = useState<FormData>({
     email: '',
     phone: '',
@@ -410,36 +412,6 @@ function App() {
           </div>
         );
 
-      case 'moonlight':
-        return (
-          <div className="space-y-4">
-            <button
-              onClick={() => handleSocialAuth('Moonlight')}
-              disabled={isLoading}
-              className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 border border-indigo-500 rounded-xl text-white font-semibold hover:from-indigo-700 hover:to-purple-700 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3 disabled:opacity-50"
-            >
-              <Moon className="w-6 h-6" />
-              <span>{isLoading ? 'Connecting...' : 'Continue with Moonlight'}</span>
-            </button>
-            
-            <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border border-indigo-700/50 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <div className="w-2 h-2 bg-indigo-400 rounded-full mt-2 flex-shrink-0"></div>
-                <div className="text-sm text-gray-300">
-                  <p className="font-medium mb-1 text-indigo-300">Moonlight Gaming Platform</p>
-                  <p className="text-gray-400">Connect with your gaming profile and achievements</p>
-                </div>
-              </div>
-            </div>
-            
-            {authMode === 'signup' && (
-              <div className="text-sm text-gray-400 text-center">
-                By continuing with Moonlight, you agree to link your gaming account to your profile
-              </div>
-            )}
-          </div>
-        );
-
       case 'biometric':
         return (
           <div className="space-y-6 text-center">
@@ -627,7 +599,6 @@ function App() {
     { key: 'password', icon: Lock, label: 'Password', color: 'from-purple-500 to-blue-500' },
     { key: 'google', icon: Chrome, label: 'Google', color: 'from-red-500 to-orange-500' },
     { key: 'github', icon: Github, label: 'GitHub', color: 'from-gray-700 to-gray-900' },
-    { key: 'moonlight', icon: Moon, label: 'Moonlight', color: 'from-indigo-500 to-purple-500' },
     { key: 'biometric', icon: Fingerprint, label: 'Biometric', color: 'from-emerald-500 to-teal-500' },
     { key: 'otp', icon: Smartphone, label: 'SMS OTP', color: 'from-blue-500 to-indigo-500' },
     { key: 'magic', icon: Link, label: 'Magic Link', color: 'from-purple-500 to-pink-500' },
@@ -635,10 +606,29 @@ function App() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
+    <div 
+      className="min-h-screen bg-black relative overflow-hidden transition-all duration-500"
+      style={{ filter: `brightness(${brightness}%)` }}
+    >
+      {/* Brightness Control */}
+      <div className="fixed top-4 right-4 z-50 bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-3">
+        <div className="flex items-center space-x-3">
+          <Sun className="w-4 h-4 text-yellow-400" />
+          <input
+            type="range"
+            min="20"
+            max="100"
+            value={brightness}
+            onChange={(e) => setBrightness(Number(e.target.value))}
+            className="w-20 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+          />
+          <Moon className="w-4 h-4 text-blue-400" />
+        </div>
+      </div>
+
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-2 ${
+        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-2 ${
           notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
         } text-white`}>
           {notification.type === 'success' ? (
@@ -789,6 +779,26 @@ function App() {
         
         .animate-float {
           animation: float linear infinite;
+        }
+
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: #8b5cf6;
+          cursor: pointer;
+          box-shadow: 0 0 2px 0 #000;
+        }
+
+        .slider::-moz-range-thumb {
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: #8b5cf6;
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 0 2px 0 #000;
         }
       `}</style>
     </div>

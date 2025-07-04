@@ -102,7 +102,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Social auth (Google, GitHub, Moonlight)
+// Social auth (Google, GitHub)
 router.post('/social', async (req, res) => {
   try {
     const { email, provider, providerId, firstName, lastName, avatar } = req.body;
@@ -125,7 +125,6 @@ router.post('/social', async (req, res) => {
       // Set provider-specific ID
       if (provider === 'google') user.googleId = providerId;
       if (provider === 'github') user.githubId = providerId;
-      if (provider === 'moonlight') user.moonlightId = providerId;
 
       await user.save();
     } else {
