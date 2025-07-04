@@ -14,13 +14,8 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection with proper timeout settings
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  console.error('❌ MONGODB_URI environment variable is not set');
-  process.exit(1);
-}
+// MongoDB Connection with correct database name
+const MONGODB_URI = 'mongodb+srv://nikampratik9096:5ICWwxBbZp0kz8fH@cluster0.4ojfics.mongodb.net/Login.Login_page?retryWrites=true&w=majority&appName=Cluster0';
 
 const mongooseOptions = {
   serverSelectionTimeoutMS: 30000, // 30 seconds
@@ -32,7 +27,7 @@ const mongooseOptions = {
 
 mongoose.connect(MONGODB_URI, mongooseOptions)
   .then(() => {
-    console.log('✅ Connected to MongoDB Atlas');
+    console.log('✅ Connected to MongoDB Atlas - Database: Login.Login_page');
   })
   .catch((error) => {
     console.error('❌ MongoDB connection error:', error);
