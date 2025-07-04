@@ -24,11 +24,9 @@ if (!MONGODB_URI) {
 
 const mongooseOptions = {
   serverSelectionTimeoutMS: 30000, // 30 seconds
-  bufferCommandsMaxTimeMS: 30000, // 30 seconds
   maxPoolSize: 10,
   minPoolSize: 5,
   maxIdleTimeMS: 30000,
-  serverSelectionRetryDelayMS: 5000,
 };
 
 mongoose.connect(MONGODB_URI, mongooseOptions)
