@@ -15,11 +15,15 @@ import {
   Smartphone,
   Link,
   Users,
-  Github
+  Github,
+  Moon,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
+import { authAPI } from './services/api';
 
 type AuthMode = 'login' | 'signup';
-type AuthMethod = 'password' | 'google' | 'github' | 'biometric' | 'otp' | 'magic' | 'sso';
+type AuthMethod = 'password' | 'google' | 'github' | 'moonlight' | 'biometric' | 'otp' | 'magic' | 'sso';
 
 interface FormData {
   email: string;
@@ -31,6 +35,14 @@ interface FormData {
   lastName: string;
 }
 
+interface AuthResponse {
+  success: boolean;
+  message: string;
+  token?: string;
+  user?: any;
+  error?: string;
+}
+
 function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
@@ -39,6 +51,7 @@ function App() {
   const [otpStep, setOtpStep] = useState<'phone' | 'verify'>('phone');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [biometricStatus, setBiometricStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [formData, setFormData] = useState<FormData>({
     email: '',
     phone: '',
@@ -71,6 +84,11 @@ function App() {
     setBackgroundShapes(shapes);
   }, []);
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -89,53 +107,162 @@ function App() {
     }
   };
 
-  const handleBiometricAuth = () => {
-    setBiometricStatus('scanning');
-    setTimeout(() => {
-      setBiometricStatus('success');
-      setTimeout(() => {
-        setBiometricStatus('idle');
-        // Simulate successful authentication
-        alert('Biometric authentication successful!');
-      }, 1500);
-    }, 2000);
-  };
-
-  const handleSocialAuth = (provider: string) => {
+  const handlePasswordAuth = async () => {
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      let response: AuthResponse;
+      
+      if (authMode === 'signup') {
+        if (formData.password !== formData.confirmPassword) {
+          showNotification('error', 'Passwords do not match');
+          return;
+        }
+        
+        response = await authAPI.register({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          authMethod: 'password'
+        });
+      } else {
+        response = await authAPI.login({
+          email: formData.email,
+          password: formData.password
+        });
+      }
+
+      if (response.data.success) {
+        localStorage.setItem('authToken', response.data.token);
+        showNotification('success', response.data.message);
+      }
+    } catch (error: any) {
+      showNotification('error', error.response?.data?.message || 'Authentication failed');
+    } finally {
       setIsLoading(false);
-      alert(`${provider} authentication initiated!`);
-    }, 1500);
+    }
   };
 
-  const handleMagicLink = () => {
+  const handleBiometricAuth = async () => {
+    setBiometricStatus('scanning');
+    
+    try {
+      // Simulate biometric scanning
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const biometricData = `biometric_${Date.now()}_${Math.random()}`;
+      const response = await authAPI.biometricAuth(formData.email || 'user@biometric.local', biometricData);
+      
+      if (response.data.success) {
+        setBiometricStatus('success');
+        localStorage.setItem('authToken', response.data.token);
+        showNotification('success', 'Biometric authentication successful!');
+        
+        setTimeout(() => {
+          setBiometricStatus('idle');
+        }, 1500);
+      }
+    } catch (error: any) {
+      setBiometricStatus('failed');
+      showNotification('error', error.response?.data?.message || 'Biometric authentication failed');
+      setTimeout(() => setBiometricStatus('idle'), 2000);
+    }
+  };
+
+  const handleSocialAuth = async (provider: string) => {
+    setIsLoading(true);
+    try {
+      // Simulate social auth flow
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const socialData = {
+        email: `user@${provider.toLowerCase()}.com`,
+        provider: provider.toLowerCase(),
+        providerId: `${provider.toLowerCase()}_${Date.now()}`,
+        firstName: 'John',
+        lastName: 'Doe',
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`
+      };
+
+      const response = await authAPI.socialAuth(socialData);
+      
+      if (response.data.success) {
+        localStorage.setItem('authToken', response.data.token);
+        showNotification('success', `${provider} authentication successful!`);
+      }
+    } catch (error: any) {
+      showNotification('error', error.response?.data?.message || `${provider} authentication failed`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMagicLink = async () => {
     if (!formData.email) {
-      alert('Please enter your email address');
+      showNotification('error', 'Please enter your email address');
       return;
     }
+    
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      const response = await authAPI.sendMagicLink(formData.email);
+      if (response.data.success) {
+        showNotification('success', 'Magic link sent to your email!');
+        // In development, show the magic link
+        if (response.data.magicLink) {
+          console.log('Magic Link:', response.data.magicLink);
+        }
+      }
+    } catch (error: any) {
+      showNotification('error', error.response?.data?.message || 'Failed to send magic link');
+    } finally {
       setIsLoading(false);
-      alert('Magic link sent to your email!');
-    }, 1500);
+    }
   };
 
-  const handleOtpSubmit = () => {
+  const handleOtpSubmit = async () => {
     if (otpStep === 'phone') {
       if (!formData.phone) {
-        alert('Please enter your phone number');
+        showNotification('error', 'Please enter your phone number');
         return;
       }
-      setOtpStep('verify');
+      
+      setIsLoading(true);
+      try {
+        const response = await authAPI.sendOTP(formData.phone);
+        if (response.data.success) {
+          setOtpStep('verify');
+          showNotification('success', 'OTP sent successfully!');
+          // In development, show the OTP
+          if (response.data.otp) {
+            console.log('OTP:', response.data.otp);
+          }
+        }
+      } catch (error: any) {
+        showNotification('error', error.response?.data?.message || 'Failed to send OTP');
+      } finally {
+        setIsLoading(false);
+      }
     } else {
       const otpCode = otp.join('');
       if (otpCode.length === 6) {
-        alert('OTP verified successfully!');
-        setOtpStep('phone');
-        setOtp(['', '', '', '', '', '']);
+        setIsLoading(true);
+        try {
+          const response = await authAPI.verifyOTP(formData.phone, otpCode);
+          if (response.data.success) {
+            localStorage.setItem('authToken', response.data.token);
+            showNotification('success', 'OTP verified successfully!');
+            setOtpStep('phone');
+            setOtp(['', '', '', '', '', '']);
+          }
+        } catch (error: any) {
+          showNotification('error', error.response?.data?.message || 'Invalid OTP');
+        } finally {
+          setIsLoading(false);
+        }
       } else {
-        alert('Please enter complete OTP');
+        showNotification('error', 'Please enter complete OTP');
       }
     }
   };
@@ -223,8 +350,12 @@ function App() {
               </>
             )}
 
-            <button className="w-full py-3 bg-gradient-to-r from-purple-500 to-blue-500 text-white font-semibold rounded-xl hover:from-purple-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300 shadow-lg">
-              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            <button 
+              onClick={handlePasswordAuth}
+              disabled={isLoading}
+              className="w-full py-3 bg-gradient-to-r from-purple-500 to-blue-500 text-white font-semibold rounded-xl hover:from-purple-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300 shadow-lg disabled:opacity-50"
+            >
+              {isLoading ? 'Processing...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
             </button>
           </div>
         );
@@ -235,7 +366,7 @@ function App() {
             <button
               onClick={() => handleSocialAuth('Google')}
               disabled={isLoading}
-              className="w-full py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white font-semibold hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3"
+              className="w-full py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white font-semibold hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3 disabled:opacity-50"
             >
               <Chrome className="w-6 h-6" />
               <span>{isLoading ? 'Connecting...' : 'Continue with Google'}</span>
@@ -255,7 +386,7 @@ function App() {
             <button
               onClick={() => handleSocialAuth('GitHub')}
               disabled={isLoading}
-              className="w-full py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white font-semibold hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3"
+              className="w-full py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white font-semibold hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3 disabled:opacity-50"
             >
               <Github className="w-6 h-6" />
               <span>{isLoading ? 'Connecting...' : 'Continue with GitHub'}</span>
@@ -276,6 +407,36 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        );
+
+      case 'moonlight':
+        return (
+          <div className="space-y-4">
+            <button
+              onClick={() => handleSocialAuth('Moonlight')}
+              disabled={isLoading}
+              className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 border border-indigo-500 rounded-xl text-white font-semibold hover:from-indigo-700 hover:to-purple-700 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3 disabled:opacity-50"
+            >
+              <Moon className="w-6 h-6" />
+              <span>{isLoading ? 'Connecting...' : 'Continue with Moonlight'}</span>
+            </button>
+            
+            <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border border-indigo-700/50 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-2 h-2 bg-indigo-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div className="text-sm text-gray-300">
+                  <p className="font-medium mb-1 text-indigo-300">Moonlight Gaming Platform</p>
+                  <p className="text-gray-400">Connect with your gaming profile and achievements</p>
+                </div>
+              </div>
+            </div>
+            
+            {authMode === 'signup' && (
+              <div className="text-sm text-gray-400 text-center">
+                By continuing with Moonlight, you agree to link your gaming account to your profile
+              </div>
+            )}
           </div>
         );
 
@@ -342,9 +503,10 @@ function App() {
                 </div>
                 <button
                   onClick={handleOtpSubmit}
-                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-blue-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300"
+                  disabled={isLoading}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-blue-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50"
                 >
-                  Send OTP
+                  {isLoading ? 'Sending...' : 'Send OTP'}
                 </button>
               </>
             ) : (
@@ -377,9 +539,10 @@ function App() {
                   </button>
                   <button
                     onClick={handleOtpSubmit}
-                    className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-blue-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300"
+                    disabled={isLoading}
+                    className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-blue-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50"
                   >
-                    Verify
+                    {isLoading ? 'Verifying...' : 'Verify'}
                   </button>
                 </div>
               </>
@@ -404,7 +567,7 @@ function App() {
             <button
               onClick={handleMagicLink}
               disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-600 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2"
+              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-600 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               <Link className="w-5 h-5" />
               <span>{isLoading ? 'Sending...' : 'Send Magic Link'}</span>
@@ -433,14 +596,16 @@ function App() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleSocialAuth('Azure AD')}
-                className="py-3 bg-gray-800/50 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2"
+                disabled={isLoading}
+                className="py-3 bg-gray-800/50 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50"
               >
                 <Shield className="w-5 h-5" />
                 <span>Azure</span>
               </button>
               <button
                 onClick={() => handleSocialAuth('Okta')}
-                className="py-3 bg-gray-800/50 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2"
+                disabled={isLoading}
+                className="py-3 bg-gray-800/50 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50"
               >
                 <Users className="w-5 h-5" />
                 <span>Okta</span>
@@ -462,6 +627,7 @@ function App() {
     { key: 'password', icon: Lock, label: 'Password', color: 'from-purple-500 to-blue-500' },
     { key: 'google', icon: Chrome, label: 'Google', color: 'from-red-500 to-orange-500' },
     { key: 'github', icon: Github, label: 'GitHub', color: 'from-gray-700 to-gray-900' },
+    { key: 'moonlight', icon: Moon, label: 'Moonlight', color: 'from-indigo-500 to-purple-500' },
     { key: 'biometric', icon: Fingerprint, label: 'Biometric', color: 'from-emerald-500 to-teal-500' },
     { key: 'otp', icon: Smartphone, label: 'SMS OTP', color: 'from-blue-500 to-indigo-500' },
     { key: 'magic', icon: Link, label: 'Magic Link', color: 'from-purple-500 to-pink-500' },
@@ -470,6 +636,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-2 ${
+          notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        } text-white`}>
+          {notification.type === 'success' ? (
+            <CheckCircle className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span>{notification.message}</span>
+        </div>
+      )}
+
       {/* Animated Background Shapes */}
       <div className="absolute inset-0">
         {backgroundShapes.map((shape) => (
