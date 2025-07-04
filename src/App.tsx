@@ -14,11 +14,12 @@ import {
   Shield,
   Smartphone,
   Link,
-  Users
+  Users,
+  Github
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'signup';
-type AuthMethod = 'password' | 'google' | 'biometric' | 'otp' | 'magic' | 'sso';
+type AuthMethod = 'password' | 'google' | 'github' | 'biometric' | 'otp' | 'magic' | 'sso';
 
 interface FormData {
   email: string;
@@ -248,6 +249,36 @@ function App() {
           </div>
         );
 
+      case 'github':
+        return (
+          <div className="space-y-4">
+            <button
+              onClick={() => handleSocialAuth('GitHub')}
+              disabled={isLoading}
+              className="w-full py-4 bg-gray-800/50 border border-gray-700 rounded-xl text-white font-semibold hover:bg-gray-700/50 transform hover:scale-[1.02] transition-all duration-300 flex items-center justify-center space-x-3"
+            >
+              <Github className="w-6 h-6" />
+              <span>{isLoading ? 'Connecting...' : 'Continue with GitHub'}</span>
+            </button>
+            
+            {authMode === 'signup' && (
+              <div className="text-sm text-gray-400 text-center">
+                By continuing with GitHub, you agree to link your GitHub account to your profile
+              </div>
+            )}
+            
+            <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div className="text-sm text-gray-300">
+                  <p className="font-medium mb-1">Developer-friendly authentication</p>
+                  <p className="text-gray-400">Access your repositories and developer profile seamlessly</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       case 'biometric':
         return (
           <div className="space-y-6 text-center">
@@ -430,6 +461,7 @@ function App() {
   const authMethodButtons = [
     { key: 'password', icon: Lock, label: 'Password', color: 'from-purple-500 to-blue-500' },
     { key: 'google', icon: Chrome, label: 'Google', color: 'from-red-500 to-orange-500' },
+    { key: 'github', icon: Github, label: 'GitHub', color: 'from-gray-700 to-gray-900' },
     { key: 'biometric', icon: Fingerprint, label: 'Biometric', color: 'from-emerald-500 to-teal-500' },
     { key: 'otp', icon: Smartphone, label: 'SMS OTP', color: 'from-blue-500 to-indigo-500' },
     { key: 'magic', icon: Link, label: 'Magic Link', color: 'from-purple-500 to-pink-500' },
