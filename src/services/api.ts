@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 // Add token to requests if available
@@ -18,6 +19,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('authToken');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API calls
 export const authAPI = {
   register: (userData: any) => api.post('/auth/register', userData),
@@ -28,6 +42,7 @@ export const authAPI = {
   sendMagicLink: (email: string) => api.post('/auth/magic-link', { email }),
   biometricAuth: (email: string, biometricData: string) => 
     api.post('/auth/biometric', { email, biometricData }),
+  verifyToken: () => api.get('/auth/verify-token'),
 };
 
 // User API calls

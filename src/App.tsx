@@ -54,6 +54,8 @@ function App() {
   const [biometricStatus, setBiometricStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [brightness, setBrightness] = useState(100);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [formData, setFormData] = useState<FormData>({
     email: '',
     phone: '',
@@ -74,7 +76,25 @@ function App() {
   }>>([]);
 
   useEffect(() => {
-    // Generate floating background shapes with darker colors for black background
+    // Check if user is already authenticated
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      // Verify token with backend
+      authAPI.verifyToken()
+        .then(response => {
+          if (response.data.success) {
+            setIsAuthenticated(true);
+            setCurrentUser(response.data.user);
+          } else {
+            localStorage.removeItem('authToken');
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('authToken');
+        });
+    }
+
+    // Generate floating background shapes
     const shapes = Array.from({ length: 8 }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
@@ -109,17 +129,58 @@ function App() {
     }
   };
 
+  const handleAuthSuccess = (response: any) => {
+    if (response.data.success && response.data.token) {
+      localStorage.setItem('authToken', response.data.token);
+      setIsAuthenticated(true);
+      setCurrentUser(response.data.user);
+      showNotification('success', response.data.message);
+      
+      // Reset form
+      setFormData({
+        email: '',
+        phone: '',
+        password: '',
+        confirmPassword: '',
+        company: '',
+        firstName: '',
+        lastName: ''
+      });
+      setAuthMethod('password');
+      setOtpStep('phone');
+      setOtp(['', '', '', '', '', '']);
+    }
+  };
+
   const handlePasswordAuth = async () => {
+    // Validation
+    if (!formData.email || !formData.password) {
+      showNotification('error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (authMode === 'signup') {
+      if (!formData.firstName || !formData.lastName) {
+        showNotification('error', 'Please enter your first and last name');
+        return;
+      }
+      
+      if (formData.password !== formData.confirmPassword) {
+        showNotification('error', 'Passwords do not match');
+        return;
+      }
+
+      if (formData.password.length < 6) {
+        showNotification('error', 'Password must be at least 6 characters long');
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
-      let response: AuthResponse;
+      let response: any;
       
       if (authMode === 'signup') {
-        if (formData.password !== formData.confirmPassword) {
-          showNotification('error', 'Passwords do not match');
-          return;
-        }
-        
         response = await authAPI.register({
           firstName: formData.firstName,
           lastName: formData.lastName,
@@ -135,18 +196,24 @@ function App() {
         });
       }
 
-      if (response.data.success) {
-        localStorage.setItem('authToken', response.data.token);
-        showNotification('success', response.data.message);
-      }
+      handleAuthSuccess(response);
     } catch (error: any) {
-      showNotification('error', error.response?.data?.message || 'Authentication failed');
+      console.error('Authentication error:', error);
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'Authentication failed. Please try again.';
+      showNotification('error', errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleBiometricAuth = async () => {
+    if (!formData.email) {
+      showNotification('error', 'Please enter your email address first');
+      return;
+    }
+
     setBiometricStatus('scanning');
     
     try {
@@ -154,12 +221,11 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const biometricData = `biometric_${Date.now()}_${Math.random()}`;
-      const response = await authAPI.biometricAuth(formData.email || 'user@biometric.local', biometricData);
+      const response = await authAPI.biometricAuth(formData.email, biometricData);
       
       if (response.data.success) {
         setBiometricStatus('success');
-        localStorage.setItem('authToken', response.data.token);
-        showNotification('success', 'Biometric authentication successful!');
+        handleAuthSuccess(response);
         
         setTimeout(() => {
           setBiometricStatus('idle');
@@ -167,7 +233,9 @@ function App() {
       }
     } catch (error: any) {
       setBiometricStatus('failed');
-      showNotification('error', error.response?.data?.message || 'Biometric authentication failed');
+      console.error('Biometric auth error:', error);
+      const errorMessage = error.response?.data?.message || 'Biometric authentication failed';
+      showNotification('error', errorMessage);
       setTimeout(() => setBiometricStatus('idle'), 2000);
     }
   };
@@ -188,13 +256,11 @@ function App() {
       };
 
       const response = await authAPI.socialAuth(socialData);
-      
-      if (response.data.success) {
-        localStorage.setItem('authToken', response.data.token);
-        showNotification('success', `${provider} authentication successful!`);
-      }
+      handleAuthSuccess(response);
     } catch (error: any) {
-      showNotification('error', error.response?.data?.message || `${provider} authentication failed`);
+      console.error('Social auth error:', error);
+      const errorMessage = error.response?.data?.message || `${provider} authentication failed`;
+      showNotification('error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -217,7 +283,9 @@ function App() {
         }
       }
     } catch (error: any) {
-      showNotification('error', error.response?.data?.message || 'Failed to send magic link');
+      console.error('Magic link error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to send magic link';
+      showNotification('error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -242,7 +310,9 @@ function App() {
           }
         }
       } catch (error: any) {
-        showNotification('error', error.response?.data?.message || 'Failed to send OTP');
+        console.error('OTP send error:', error);
+        const errorMessage = error.response?.data?.message || 'Failed to send OTP';
+        showNotification('error', errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -253,13 +323,14 @@ function App() {
         try {
           const response = await authAPI.verifyOTP(formData.phone, otpCode);
           if (response.data.success) {
-            localStorage.setItem('authToken', response.data.token);
-            showNotification('success', 'OTP verified successfully!');
+            handleAuthSuccess(response);
             setOtpStep('phone');
             setOtp(['', '', '', '', '', '']);
           }
         } catch (error: any) {
-          showNotification('error', error.response?.data?.message || 'Invalid OTP');
+          console.error('OTP verify error:', error);
+          const errorMessage = error.response?.data?.message || 'Invalid OTP';
+          showNotification('error', errorMessage);
         } finally {
           setIsLoading(false);
         }
@@ -268,6 +339,138 @@ function App() {
       }
     }
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    showNotification('success', 'Logged out successfully');
+  };
+
+  // If user is authenticated, show dashboard
+  if (isAuthenticated && currentUser) {
+    return (
+      <div 
+        className="min-h-screen bg-black relative overflow-hidden transition-all duration-500"
+        style={{ filter: `brightness(${brightness}%)` }}
+      >
+        {/* Brightness Control */}
+        <div className="fixed top-4 right-4 z-50 bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-3">
+          <div className="flex items-center space-x-3">
+            <Sun className="w-4 h-4 text-yellow-400" />
+            <input
+              type="range"
+              min="20"
+              max="100"
+              value={brightness}
+              onChange={(e) => setBrightness(Number(e.target.value))}
+              className="w-20 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <Moon className="w-4 h-4 text-blue-400" />
+          </div>
+        </div>
+
+        {/* Notification */}
+        {notification && (
+          <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-2 ${
+            notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          } text-white`}>
+            {notification.type === 'success' ? (
+              <CheckCircle className="w-5 h-5" />
+            ) : (
+              <AlertCircle className="w-5 h-5" />
+            )}
+            <span>{notification.message}</span>
+          </div>
+        )}
+
+        {/* Dashboard */}
+        <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl">
+            <div className="bg-gray-900/50 backdrop-blur-lg border border-gray-800 rounded-2xl p-8 shadow-2xl">
+              <div className="text-center mb-8">
+                <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <CheckCircle className="w-10 h-10 text-white" />
+                </div>
+                <h1 className="text-3xl font-bold text-white mb-2">Welcome!</h1>
+                <p className="text-gray-400">Authentication successful</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6">
+                  <h2 className="text-xl font-semibold text-white mb-4">User Information</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400">Name:</span>
+                      <p className="text-white font-medium">
+                        {currentUser.firstName && currentUser.lastName 
+                          ? `${currentUser.firstName} ${currentUser.lastName}`
+                          : 'Not provided'
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Email:</span>
+                      <p className="text-white font-medium">{currentUser.email}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Phone:</span>
+                      <p className="text-white font-medium">{currentUser.phone || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Auth Method:</span>
+                      <p className="text-white font-medium capitalize">{currentUser.authMethod}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Last Login:</span>
+                      <p className="text-white font-medium">
+                        {new Date(currentUser.lastLogin).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Verified:</span>
+                      <p className="text-white font-medium">
+                        {currentUser.isVerified ? 'Yes' : 'No'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-600 transform hover:scale-[1.02] transition-all duration-300"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <style jsx>{`
+          .slider::-webkit-slider-thumb {
+            appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            cursor: pointer;
+            box-shadow: 0 0 2px 0 #000;
+          }
+
+          .slider::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 2px 0 #000;
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   const renderAuthMethod = () => {
     switch (authMethod) {
@@ -282,6 +485,7 @@ function App() {
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
                 className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                required
               />
             </div>
             
@@ -293,6 +497,7 @@ function App() {
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
                 className="w-full pl-12 pr-12 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                required
               />
               <button
                 type="button"
@@ -313,6 +518,7 @@ function App() {
                     value={formData.confirmPassword}
                     onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                     className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                    required
                   />
                 </div>
                 
@@ -325,6 +531,7 @@ function App() {
                       value={formData.firstName}
                       onChange={(e) => handleInputChange('firstName', e.target.value)}
                       className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                      required
                     />
                   </div>
                   <div className="relative">
@@ -335,6 +542,7 @@ function App() {
                       value={formData.lastName}
                       onChange={(e) => handleInputChange('lastName', e.target.value)}
                       className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                      required
                     />
                   </div>
                 </div>
@@ -343,7 +551,7 @@ function App() {
                   <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-400 w-5 h-5" />
                   <input
                     type="tel"
-                    placeholder="Phone number"
+                    placeholder="Phone number (optional)"
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
                     className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
@@ -414,46 +622,60 @@ function App() {
 
       case 'biometric':
         return (
-          <div className="space-y-6 text-center">
+          <div className="space-y-6">
             <div className="relative">
-              <div 
-                className={`w-32 h-32 mx-auto rounded-full border-4 flex items-center justify-center cursor-pointer transition-all duration-500 ${
-                  biometricStatus === 'idle' ? 'border-purple-400 bg-purple-400/20' :
-                  biometricStatus === 'scanning' ? 'border-orange-400 bg-orange-400/20 animate-pulse' :
-                  biometricStatus === 'success' ? 'border-green-400 bg-green-400/20' :
-                  'border-red-400 bg-red-400/20'
-                }`}
-                onClick={handleBiometricAuth}
-              >
-                {biometricStatus === 'success' ? (
-                  <Check className="w-16 h-16 text-green-400" />
-                ) : (
-                  <Fingerprint className={`w-16 h-16 transition-colors duration-300 ${
-                    biometricStatus === 'idle' ? 'text-purple-400' :
-                    biometricStatus === 'scanning' ? 'text-orange-400' :
-                    'text-red-400'
-                  }`} />
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-400 w-5 h-5" />
+              <input
+                type="email"
+                placeholder="Email address"
+                value={formData.email}
+                onChange={(e) => handleInputChange('email', e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                required
+              />
+            </div>
+            
+            <div className="text-center">
+              <div className="relative">
+                <div 
+                  className={`w-32 h-32 mx-auto rounded-full border-4 flex items-center justify-center cursor-pointer transition-all duration-500 ${
+                    biometricStatus === 'idle' ? 'border-purple-400 bg-purple-400/20' :
+                    biometricStatus === 'scanning' ? 'border-orange-400 bg-orange-400/20 animate-pulse' :
+                    biometricStatus === 'success' ? 'border-green-400 bg-green-400/20' :
+                    'border-red-400 bg-red-400/20'
+                  }`}
+                  onClick={handleBiometricAuth}
+                >
+                  {biometricStatus === 'success' ? (
+                    <Check className="w-16 h-16 text-green-400" />
+                  ) : (
+                    <Fingerprint className={`w-16 h-16 transition-colors duration-300 ${
+                      biometricStatus === 'idle' ? 'text-purple-400' :
+                      biometricStatus === 'scanning' ? 'text-orange-400' :
+                      'text-red-400'
+                    }`} />
+                  )}
+                </div>
+                
+                {biometricStatus === 'scanning' && (
+                  <div className="absolute inset-0 rounded-full border-4 border-orange-400 animate-ping"></div>
                 )}
               </div>
               
-              {biometricStatus === 'scanning' && (
-                <div className="absolute inset-0 rounded-full border-4 border-orange-400 animate-ping"></div>
-              )}
-            </div>
-            
-            <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-white">
-                {biometricStatus === 'idle' ? 'Touch sensor to authenticate' :
-                 biometricStatus === 'scanning' ? 'Scanning...' :
-                 biometricStatus === 'success' ? 'Authentication successful!' :
-                 'Authentication failed'}
-              </h3>
-              <p className="text-gray-400">
-                {biometricStatus === 'idle' ? 'Place your finger on the sensor' :
-                 biometricStatus === 'scanning' ? 'Please hold still' :
-                 biometricStatus === 'success' ? 'Welcome back!' :
-                 'Please try again'}
-              </p>
+              <div className="space-y-2 mt-4">
+                <h3 className="text-xl font-semibold text-white">
+                  {biometricStatus === 'idle' ? 'Touch sensor to authenticate' :
+                   biometricStatus === 'scanning' ? 'Scanning...' :
+                   biometricStatus === 'success' ? 'Authentication successful!' :
+                   'Authentication failed'}
+                </h3>
+                <p className="text-gray-400">
+                  {biometricStatus === 'idle' ? 'Place your finger on the sensor' :
+                   biometricStatus === 'scanning' ? 'Please hold still' :
+                   biometricStatus === 'success' ? 'Welcome back!' :
+                   'Please try again'}
+                </p>
+              </div>
             </div>
           </div>
         );

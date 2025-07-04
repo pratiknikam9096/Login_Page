@@ -12,13 +12,68 @@ const generateToken = (userId) => {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 };
 
+// Middleware to verify JWT token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ success: false, message: 'Invalid or expired token' });
+    }
+    req.userId = decoded.userId;
+    next();
+  });
+};
+
+// Verify token endpoint
+router.get('/verify-token', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Token verification failed', 
+      error: error.message 
+    });
+  }
+});
+
 // Register with password
 router.post('/register', async (req, res) => {
   try {
     const { firstName, lastName, email, phone, password, authMethod = 'password' } = req.body;
 
+    // Validation
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide all required fields: firstName, lastName, email, password' 
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Password must be at least 6 characters long' 
+      });
+    }
+
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ 
         success: false, 
@@ -28,10 +83,10 @@ router.post('/register', async (req, res) => {
 
     // Create new user
     const user = new User({
-      firstName,
-      lastName,
-      email,
-      phone,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone?.trim(),
       password,
       authMethod,
       isVerified: true // Auto-verify for demo purposes
@@ -49,6 +104,15 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
+    
+    // Handle duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User already exists with this email' 
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Registration failed', 
@@ -62,12 +126,28 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide email and password' 
+      });
+    }
+
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid email or password' 
+      });
+    }
+
+    // Check if user registered with password method
+    if (user.authMethod !== 'password') {
+      return res.status(401).json({ 
+        success: false, 
+        message: `This account was created using ${user.authMethod}. Please use that method to sign in.` 
       });
     }
 
@@ -107,15 +187,23 @@ router.post('/social', async (req, res) => {
   try {
     const { email, provider, providerId, firstName, lastName, avatar } = req.body;
 
-    let user = await User.findOne({ email });
+    // Validation
+    if (!email || !provider || !providerId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide email, provider, and providerId' 
+      });
+    }
+
+    let user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       // Create new user for social auth
       user = new User({
-        email,
-        firstName: firstName || '',
-        lastName: lastName || '',
-        authMethod: provider,
+        email: email.toLowerCase().trim(),
+        firstName: firstName?.trim() || '',
+        lastName: lastName?.trim() || '',
+        authMethod: provider.toLowerCase(),
         isVerified: true,
         profile: {
           avatar: avatar || ''
@@ -123,8 +211,8 @@ router.post('/social', async (req, res) => {
       });
 
       // Set provider-specific ID
-      if (provider === 'google') user.googleId = providerId;
-      if (provider === 'github') user.githubId = providerId;
+      if (provider.toLowerCase() === 'google') user.googleId = providerId;
+      if (provider.toLowerCase() === 'github') user.githubId = providerId;
 
       await user.save();
     } else {
@@ -159,6 +247,13 @@ router.post('/send-otp', async (req, res) => {
   try {
     const { phone } = req.body;
 
+    if (!phone) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide phone number' 
+      });
+    }
+
     const otp = generateOTP();
     
     // In a real app, you'd send SMS here
@@ -187,20 +282,31 @@ router.post('/verify-otp', async (req, res) => {
   try {
     const { phone, otp } = req.body;
 
+    if (!phone || !otp) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide phone number and OTP' 
+      });
+    }
+
     // In production, verify against stored OTP
     // For demo, accept any 6-digit OTP
-    if (otp.length === 6) {
-      let user = await User.findOne({ phone });
+    if (otp.length === 6 && /^\d{6}$/.test(otp)) {
+      let user = await User.findOne({ phone: phone.trim() });
 
       if (!user) {
         // Create new user with phone auth
         user = new User({
-          email: `${phone}@phone.local`, // Temporary email
-          phone,
+          email: `${phone.replace(/\D/g, '')}@phone.local`, // Temporary email
+          phone: phone.trim(),
           authMethod: 'otp',
           isVerified: true,
           otpVerified: true
         });
+        await user.save();
+      } else {
+        user.lastLogin = new Date();
+        user.otpVerified = true;
         await user.save();
       }
 
@@ -215,7 +321,7 @@ router.post('/verify-otp', async (req, res) => {
     } else {
       res.status(400).json({ 
         success: false, 
-        message: 'Invalid OTP' 
+        message: 'Invalid OTP. Please enter a 6-digit code.' 
       });
     }
   } catch (error) {
@@ -233,8 +339,15 @@ router.post('/magic-link', async (req, res) => {
   try {
     const { email } = req.body;
 
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide email address' 
+      });
+    }
+
     // Generate magic link token
-    const magicToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '15m' });
+    const magicToken = jwt.sign({ email: email.toLowerCase().trim() }, JWT_SECRET, { expiresIn: '15m' });
     const magicLink = `${req.protocol}://${req.get('host')}/api/auth/verify-magic?token=${magicToken}`;
 
     // In production, send email here
@@ -260,17 +373,24 @@ router.get('/verify-magic', async (req, res) => {
   try {
     const { token } = req.query;
 
+    if (!token) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=missing_token`);
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET);
     const { email } = decoded;
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       user = new User({
-        email,
+        email: email.toLowerCase().trim(),
         authMethod: 'magic',
         isVerified: true
       });
+      await user.save();
+    } else {
+      user.lastLogin = new Date();
       await user.save();
     }
 
@@ -289,15 +409,22 @@ router.post('/biometric', async (req, res) => {
   try {
     const { email, biometricData } = req.body;
 
+    if (!email || !biometricData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide email and biometric data' 
+      });
+    }
+
     // In production, you'd process actual biometric data
     // For demo, we'll simulate it
     const biometricHash = Buffer.from(biometricData).toString('base64');
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       user = new User({
-        email,
+        email: email.toLowerCase().trim(),
         authMethod: 'biometric',
         biometricHash,
         isVerified: true
