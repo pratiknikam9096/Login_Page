@@ -27,6 +27,7 @@ const mongooseOptions = {
   maxPoolSize: 10,
   minPoolSize: 5,
   maxIdleTimeMS: 30000,
+  bufferTimeoutMS: 45000, // 45 seconds - increased from default 10 seconds
 };
 
 mongoose.connect(MONGODB_URI, mongooseOptions)
