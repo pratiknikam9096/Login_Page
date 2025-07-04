@@ -14,6 +14,19 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Server is running',
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+  });
+});
+
 // MongoDB Connection with correct database name
 const MONGODB_URI = 'mongodb+srv://nikampratik9096:5ICWwxBbZp0kz8fH@cluster0.4ojfics.mongodb.net/Login.Login_page?retryWrites=true&w=majority&appName=Cluster0';
 
@@ -28,6 +41,11 @@ const mongooseOptions = {
 mongoose.connect(MONGODB_URI, mongooseOptions)
   .then(() => {
     console.log('✅ Connected to MongoDB Atlas - Database: Login.Login_page');
+    
+    // Start the server only after successful database connection
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   })
   .catch((error) => {
     console.error('❌ MongoDB connection error:', error);
@@ -45,21 +63,4 @@ mongoose.connection.on('disconnected', () => {
 
 mongoose.connection.on('reconnected', () => {
   console.log('✅ MongoDB reconnected');
-});
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Server is running',
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
 });
